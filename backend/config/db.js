@@ -7,7 +7,7 @@ mongoose.createConnection();
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(`mongodb+srv://devanikeyur19:kd2005@cluster0.xejqbcw.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`, {
+    const conn = await mongoose.connect(`mongodb+srv://devanikeyur19:PersonalKD@cluster0.0hnfkny.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
