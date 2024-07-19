@@ -2,7 +2,7 @@ import { Avatar } from "@chakra-ui/avatar";
 import { Box, Text } from "@chakra-ui/layout";
 import { ChatState } from "../../Context/ChatProvider";
 
-const UserListItem = ({ handleFunction }) => {
+const UserListItem = ({ handleFunction,searchedUser }) => {
   const { user } = ChatState();
 
   return (
@@ -27,14 +27,14 @@ const UserListItem = ({ handleFunction }) => {
         mr={2}
         size="sm"
         cursor="pointer"
-        name={user.name}
-        src={user.pic}
+        name={searchedUser.name}
+        src={searchedUser.pic}
       />
       <Box>
-        <Text>{user.name}</Text>
+        <Text>{searchedUser.name}</Text>
         <Text fontSize="xs">
           <b>Email : </b>
-          {user.email}
+          {searchedUser.email}
         </Text>
       </Box>
     </Box>
