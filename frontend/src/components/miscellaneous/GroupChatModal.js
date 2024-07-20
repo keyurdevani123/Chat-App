@@ -43,6 +43,7 @@ const GroupChatModal = ({ children }) => {
     }
 
     setSelectedUsers([...selectedUsers, userToAdd]);
+    console.log (selectedUsers);
   };
 
   const handleSearch = async (query) => {
@@ -171,11 +172,12 @@ const GroupChatModal = ({ children }) => {
             ) : (
               searchResult
                 ?.slice(0, 4)
-                .map((user) => (
+                .map((searched_user) => (
                   <UserListItem
-                    key={user._id}
-                    user={user}
+                    key={searched_user._id}
+                    user={searched_user}
                     handleFunction={() => handleGroup(user)}
+                    searchedUser={searched_user}
                   />
                 ))
             )}

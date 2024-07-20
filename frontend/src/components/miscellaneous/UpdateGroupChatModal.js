@@ -264,6 +264,7 @@ const UpdateGroupChatModal = ({ fetchMessages, fetchAgain, setFetchAgain }) => {
                   key={user._id}
                   user={user}
                   handleFunction={() => handleAddUser(user)}
+                  searchedUser={user}
                 />
               ))
             )}
