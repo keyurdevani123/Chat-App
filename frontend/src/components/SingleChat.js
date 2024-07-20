@@ -4,19 +4,19 @@ import { Box, Text } from "@chakra-ui/layout";
 import "./styles.css";
 import { IconButton, Spinner, useToast } from "@chakra-ui/react";
 import { getSender, getSenderFull } from "../config/ChatLogics";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { ArrowBackIcon } from "@chakra-ui/icons";
 import ProfileModal from "./miscellaneous/ProfileModal";
 import ScrollableChat from "./ScrollableChat";
 import Lottie from "react-lottie";
 import animationData from "../animations/typing.json";
-
 import io from "socket.io-client";
 import UpdateGroupChatModal from "./miscellaneous/UpdateGroupChatModal";
 import { ChatState } from "../Context/ChatProvider";
-const ENDPOINT = "http://localhost:5000"; // "https://talk-a-tive.herokuapp.com"; -> After deployment
-var socket, selectedChatCompare;
+
+const ENDPOINT = "http://localhost:5000"; // Update with your backend URL if needed
+let socket, selectedChatCompare;
 
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [messages, setMessages] = useState([]);
@@ -26,6 +26,10 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [typing, setTyping] = useState(false);
   const [istyping, setIsTyping] = useState(false);
   const toast = useToast();
+  const { selectedChat, setSelectedChat, user, notification, setNotification } = ChatState();
+
+  // useRef to avoid re-creating setTimeout in typingHandler
+  const lastTypingTimeRef = useRef(null);
 
   const defaultOptions = {
     loop: true,
@@ -35,8 +39,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       preserveAspectRatio: "xMidYMid slice",
     },
   };
-  const { selectedChat, setSelectedChat, user, notification, setNotification } =
-    ChatState();
 
   const fetchMessages = async () => {
     if (!selectedChat) return;
@@ -50,17 +52,15 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
 
       setLoading(true);
 
-      const { data } = await axios.get(
-        `/api/message/${selectedChat._id}`,
-        config
-      );
+      const { data } = await axios.get(`/api/message/${selectedChat._id}`, config);
       setMessages(data);
       setLoading(false);
 
       socket.emit("join chat", selectedChat._id);
+      console.log("Joined chat:", selectedChat._id);
     } catch (error) {
       toast({
-        title: "Error Occured!",
+        title: "Error Occurred!",
         description: "Failed to Load the Messages",
         status: "error",
         duration: 5000,
@@ -80,20 +80,22 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             Authorization: `Bearer ${user.token}`,
           },
         };
+        const messageToSend = newMessage;
         setNewMessage("");
         const { data } = await axios.post(
           "/api/message",
           {
-            content: newMessage,
-            chatId: selectedChat,
+            content: messageToSend,
+            chatId: selectedChat._id,
           },
           config
         );
+        console.log("Message sent:", data);
         socket.emit("new message", data);
-        setMessages([...messages, data]);
+        setMessages((prevMessages) => [...prevMessages, data]);
       } catch (error) {
         toast({
-          title: "Error Occured!",
+          title: "Error Occurred!",
           description: "Failed to send the Message",
           status: "error",
           duration: 5000,
@@ -105,37 +107,44 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   };
 
   useEffect(() => {
+    console.log("Setting up socket connection...");
     socket = io(ENDPOINT);
     socket.emit("setup", user);
-    socket.on("connected", () => setSocketConnected(true));
+    socket.on("connected", () => {
+      setSocketConnected(true);
+      console.log("Socket connected");
+    });
     socket.on("typing", () => setIsTyping(true));
     socket.on("stop typing", () => setIsTyping(false));
 
-    // eslint-disable-next-line
-  }, []);
-
-  useEffect(() => {
-    fetchMessages();
-
-    selectedChatCompare = selectedChat;
-    // eslint-disable-next-line
-  }, [selectedChat]);
-
-  useEffect(() => {
-    socket.on("message recieved", (newMessageRecieved) => {
+    socket.on("message received", (newMessageReceived) => {
+      console.log("Message received:", newMessageReceived);
       if (
-        !selectedChatCompare || // if chat is not selected or doesn't match current chat
-        selectedChatCompare._id !== newMessageRecieved.chat._id
+        !selectedChatCompare ||
+        selectedChatCompare._id !== newMessageReceived.chat._id
       ) {
-        if (!notification.includes(newMessageRecieved)) {
-          setNotification([newMessageRecieved, ...notification]);
+        // Notification logic for messages not in the selected chat
+        if (!notification.some((n) => n._id === newMessageReceived._id)) {
+          setNotification([newMessageReceived, ...notification]);
           setFetchAgain(!fetchAgain);
         }
       } else {
-        setMessages([...messages, newMessageRecieved]);
+        setMessages((prevMessages) => [...prevMessages, newMessageReceived]);
       }
     });
-  });
+
+    // Clean up function to disconnect socket when component unmounts
+    return () => {
+      socket.disconnect();
+      console.log("Socket disconnected");
+    };
+  }, [selectedChat, notification, setFetchAgain, user]);
+
+  useEffect(() => {
+    fetchMessages();
+    selectedChatCompare = selectedChat;
+    // eslint-disable-next-line
+  }, [selectedChat]);
 
   const typingHandler = (e) => {
     setNewMessage(e.target.value);
@@ -146,16 +155,15 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       setTyping(true);
       socket.emit("typing", selectedChat._id);
     }
-    let lastTypingTime = new Date().getTime();
-    var timerLength = 3000;
-    setTimeout(() => {
-      var timeNow = new Date().getTime();
-      var timeDiff = timeNow - lastTypingTime;
-      if (timeDiff >= timerLength && typing) {
-        socket.emit("stop typing", selectedChat._id);
-        setTyping(false);
-      }
-    }, timerLength);
+
+    if (lastTypingTimeRef.current) {
+      clearTimeout(lastTypingTimeRef.current);
+    }
+
+    lastTypingTimeRef.current = setTimeout(() => {
+      socket.emit("stop typing", selectedChat._id);
+      setTyping(false);
+    }, 3000);
   };
 
   return (
@@ -181,9 +189,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
               (!selectedChat.isGroupChat ? (
                 <>
                   {getSender(user, selectedChat.users)}
-                  <ProfileModal
-                    user={getSenderFull(user, selectedChat.users)}
-                  />
+                  <ProfileModal user={getSenderFull(user, selectedChat.users)} />
                 </>
               ) : (
                 <>
@@ -208,30 +214,18 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             overflowY="hidden"
           >
             {loading ? (
-              <Spinner
-                size="xl"
-                w={20}
-                h={20}
-                alignSelf="center"
-                margin="auto"
-              />
+              <Spinner size="xl" w={20} h={20} alignSelf="center" margin="auto" />
             ) : (
               <div className="messages">
                 <ScrollableChat messages={messages} />
               </div>
             )}
 
-            <FormControl
-              onKeyDown={sendMessage}
-              id="first-name"
-              isRequired
-              mt={3}
-            >
+            <FormControl onKeyDown={sendMessage} id="first-name" isRequired mt={3}>
               {istyping ? (
                 <div>
                   <Lottie
                     options={defaultOptions}
-                    // height={50}
                     width={70}
                     style={{ marginBottom: 15, marginLeft: 0 }}
                   />
@@ -250,7 +244,6 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           </Box>
         </>
       ) : (
-        // to get socket.io on same page
         <Box d="flex" alignItems="center" justifyContent="center" h="100%">
           <Text fontSize="3xl" pb={3} fontFamily="Work sans">
             Click on a user to start chatting
